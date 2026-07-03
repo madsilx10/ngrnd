@@ -8,7 +8,6 @@ const BASE = `https://app.dynamicauth.com/api/v0/sdk/${ENV_ID}`;
 const ORIGIN = "https://quests.ngrnd.io";
 const DOMAIN = "quests.ngrnd.io";
 const CHAIN_ID = "8453";
-const REF_CODE = "0x9cc66A64"; // dari link onboard lo
 
 // --- X (Twitter) OAuth config ---
 const X_CLIENT_ID = "TTNLYVZkektJYzl1QVBSNENQbkw6MTpjaQ";
@@ -31,32 +30,6 @@ function genXState() {
   return base64url(crypto.randomBytes(24));
 }
 
-async function applyReferral(jwt, address, index) {
-  try {
-    const res = await fetch(`${ORIGIN}/api/user?referredBy=${REF_CODE}`, {
-      method: "GET",
-      headers: {
-        ...HEADERS_COMMON,
-        authorization: `Bearer ${jwt}`,
-        referer: `${ORIGIN}/dashboard`,
-      },
-    });
-    console.log(`[${index}] [${address}] referral status:`, res.status);
-    console.log(`[${index}] [${address}] referral headers:`, JSON.stringify([...res.headers.entries()]));
-    const data = await res.json();
-    console.log(`[${index}] [${address}] referral response FULL:`, JSON.stringify(data));
-    const ok = data.referredBy === REF_CODE;
-    if (!ok) {
-      console.log(`[${index}] [${address}] referral FAILED:`, JSON.stringify(data).slice(0, 200));
-    } else {
-      console.log(`[${index}] [${address}] referral -> OK`);
-    }
-    return ok;
-  } catch (err) {
-    console.log(`[${index}] [${address}] referral ERROR:`, err.message);
-    return false;
-  }
-}
 
 async function connectX(authToken, ct0, jwt, address, index) {
   console.log(`[${index}] [${address}] connecting X...`);
@@ -81,6 +54,7 @@ async function connectX(authToken, ct0, jwt, address, index) {
         "x-twitter-active-user": "yes",
         "x-twitter-auth-type": "OAuth2Session",
         "x-twitter-client-language": "en",
+        "origin": "https://x.com",
         referer: authorizeReferer,
         "user-agent": HEADERS_COMMON["user-agent"],
       },
@@ -106,17 +80,18 @@ async function connectX(authToken, ct0, jwt, address, index) {
     const code = redirectUrl.searchParams.get("code");
     const returnedState = redirectUrl.searchParams.get("state");
 
-    const dynamicCallbackUrl = `${X_REDIRECT_URI}?code=${code}&state=${returnedState}&code_verifier=${verifier}`;
+    const dynamicCallbackUrl = `${X_REDIRECT_URI}?code=${code}&state=${returnedState}`;
     const exchangeRes = await fetch(dynamicCallbackUrl, {
       method: "GET",
       headers: {
         "user-agent": HEADERS_COMMON["user-agent"],
         authorization: `Bearer ${jwt}`,
+        "x-dyn-code-verifier": verifier,
       },
       redirect: "manual",
     });
 
-    const ok = exchangeRes.status < 400;
+    const ok = exchangeRes.status < 400 || exchangeRes.status === 302;
     console.log(`[${index}] [${address}] X connect -> ${ok ? "OK" : "FAILED"} (${exchangeRes.status})`);
     return ok;
   } catch (err) {
@@ -151,7 +126,7 @@ function buildSiweMessage(address, nonce) {
     `${DOMAIN} wants you to sign in with your Ethereum account:\n` +
     `${address}\n\n` +
     `Welcome to Loyalty. Signing is the only way we can truly know that you are the owner of the wallet you are connecting. Signing is a safe, gas-less transaction that does not in any way give Loyalty permission to perform any transactions with your wallet.\n\n` +
-    `URI: ${ORIGIN}/profile\n` +
+    `URI: ${ORIGIN}/\n` +
     `Version: 1\n` +
     `Chain ID: ${CHAIN_ID}\n` +
     `Nonce: ${nonce}\n` +
@@ -238,10 +213,8 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
     if (verifyRes.status === 200 && verifyData.jwt) {
       console.log(`[${index}] [${address}] SUCCESS, jwt acquired`);
 
-      // 5. referral di-skip (harus manual lewat browser, gak bisa dari script)
-      const referralOk = null;
 
-      // 6. connect X (kalau cookie tersedia)
+      // 5. connect X (kalau cookie tersedia)
       let xConnected = false;
       if (xAuthToken && xCt0) {
         xConnected = await connectX(xAuthToken, xCt0, verifyData.jwt, address, index);
@@ -249,7 +222,7 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
         console.log(`[${index}] [${address}] skip X connect (no cookie)`);
       }
 
-      return { address, jwt: verifyData.jwt, minifiedJwt: verifyData.minifiedJwt, xConnected, referral: referralOk };
+      return { address, jwt: verifyData.jwt, minifiedJwt: verifyData.minifiedJwt, xConnected };
     } else {
       console.log(`[${index}] [${address}] FAILED:`, JSON.stringify(verifyData).slice(0, 300));
       return null;
