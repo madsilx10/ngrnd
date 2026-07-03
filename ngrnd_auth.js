@@ -1,4 +1,5 @@
 const { ethers } = require("ethers");
+const cycleTLS = require("cycletls");
 const fs = require("fs");
 const readline = require("readline");
 const crypto = require("crypto");
@@ -36,7 +37,6 @@ async function connectX(authToken, ct0, guestId, jwt, address, index) {
   const { verifier, challenge } = genPkce();
   const state = genXState();
   const cookieHeader = `auth_token=${authToken}; ct0=${ct0}; guest_id=${guestId}`;
-  console.log(`[${index}] [${address}] cookie check - auth_token: ${authToken?.slice(0,10)}... ct0: ${ct0?.slice(0,10)}...`);
 
   const authorizeReferer =
     `https://x.com/i/oauth2/authorize?client_id=${X_CLIENT_ID}` +
@@ -54,71 +54,81 @@ async function connectX(authToken, ct0, guestId, jwt, address, index) {
     code_challenge_method: "S256",
   });
 
-  try {
-    const res = await fetch(`https://x.com/i/api/2/oauth2/authorize?${authorizeParams.toString()}`, {
-      method: "GET",
-      headers: {
-        authorization: `Bearer ${X_BEARER}`,
-        cookie: cookieHeader,
-        "x-csrf-token": ct0,
-        "X-Csrf-Token": ct0,
-        "x-twitter-active-user": "yes",
-        "x-twitter-auth-type": "OAuth2Session",
-        "x-twitter-client-language": "en",
-        "x-client-transaction-id": base64url(crypto.randomBytes(48)),
-        "accept": "*/*",
-        "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        "accept-encoding": "gzip, deflate, br",
-        "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
-        "sec-ch-ua-mobile": "?1",
-        "sec-ch-ua-platform": '"Android"',
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        referer: authorizeReferer,
-        "user-agent": HEADERS_COMMON["user-agent"],
-      },
-    });
+  const tls = await cycleTLS.init();
+  const commonTlsOpts = {
+    ja3: "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0",
+    userAgent: HEADERS_COMMON["user-agent"],
+  };
 
-    const data = await res.json();
+  try {
+    // step 1: GET authorize
+    const res = await tls.get(
+      `https://x.com/i/api/2/oauth2/authorize?${authorizeParams.toString()}`,
+      {
+        ...commonTlsOpts,
+        headers: {
+          authorization: `Bearer ${X_BEARER}`,
+          cookie: cookieHeader,
+          "x-csrf-token": ct0,
+          "x-twitter-active-user": "yes",
+          "x-twitter-auth-type": "OAuth2Session",
+          "x-twitter-client-language": "en",
+          "x-client-transaction-id": base64url(crypto.randomBytes(48)),
+          "accept": "*/*",
+          "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+          "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
+          "sec-ch-ua-mobile": "?1",
+          "sec-ch-ua-platform": '"Android"',
+          "sec-fetch-dest": "empty",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-site": "same-origin",
+          referer: authorizeReferer,
+        },
+      }
+    );
+
+    const data = typeof res.body === "string" ? JSON.parse(res.body) : res.body;
     const authCode = data.auth_code;
     if (!authCode) {
       console.log(`[${index}] [${address}] X step1 FAILED:`, JSON.stringify(data).slice(0, 300));
+      tls.exit();
       return false;
     }
     console.log(`[${index}] [${address}] X step1 OK, auth_code acquired`);
 
     // step 2: POST approval
-    const approvalRes = await fetch("https://x.com/i/api/2/oauth2/authorize", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${X_BEARER}`,
-        "content-type": "application/x-www-form-urlencoded",
-        cookie: cookieHeader,
-        "x-csrf-token": ct0,
-        "X-Csrf-Token": ct0,
-        "x-twitter-active-user": "yes",
-        "x-twitter-auth-type": "OAuth2Session",
-        "x-twitter-client-language": "en",
-        "x-client-transaction-id": base64url(crypto.randomBytes(48)),
-        "accept": "*/*",
-        "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-        "origin": "https://x.com",
-        "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
-        "sec-ch-ua-mobile": "?1",
-        "sec-ch-ua-platform": '"Android"',
-        "sec-fetch-dest": "empty",
-        "sec-fetch-mode": "cors",
-        "sec-fetch-site": "same-origin",
-        referer: authorizeReferer,
-        "user-agent": HEADERS_COMMON["user-agent"],
-      },
-      body: new URLSearchParams({ approval: "true", code: authCode }).toString(),
-    });
+    const approvalRes = await tls.post(
+      "https://x.com/i/api/2/oauth2/authorize",
+      new URLSearchParams({ approval: "true", code: authCode }).toString(),
+      {
+        ...commonTlsOpts,
+        headers: {
+          authorization: `Bearer ${X_BEARER}`,
+          "content-type": "application/x-www-form-urlencoded",
+          cookie: cookieHeader,
+          "x-csrf-token": ct0,
+          "x-twitter-active-user": "yes",
+          "x-twitter-auth-type": "OAuth2Session",
+          "x-twitter-client-language": "en",
+          "x-client-transaction-id": base64url(crypto.randomBytes(48)),
+          "accept": "*/*",
+          "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+          "origin": "https://x.com",
+          "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
+          "sec-ch-ua-mobile": "?1",
+          "sec-ch-ua-platform": '"Android"',
+          "sec-fetch-dest": "empty",
+          "sec-fetch-mode": "cors",
+          "sec-fetch-site": "same-origin",
+          referer: authorizeReferer,
+        },
+      }
+    );
 
-    const approvalData = await approvalRes.json();
+    const approvalData = typeof approvalRes.body === "string" ? JSON.parse(approvalRes.body) : approvalRes.body;
     if (!approvalData.redirect_uri) {
       console.log(`[${index}] [${address}] X step2 FAILED:`, JSON.stringify(approvalData).slice(0, 300));
+      tls.exit();
       return false;
     }
     console.log(`[${index}] [${address}] X step2 OK, redirect_uri acquired`);
@@ -141,6 +151,7 @@ async function connectX(authToken, ct0, guestId, jwt, address, index) {
 
     const ok = exchangeRes.status < 400 || exchangeRes.status === 302;
     console.log(`[${index}] [${address}] X connect -> ${ok ? "OK" : "FAILED"} (${exchangeRes.status})`);
+    tls.exit();
     return ok;
   } catch (err) {
     console.log(`[${index}] [${address}] X connect ERROR:`, err.message);
