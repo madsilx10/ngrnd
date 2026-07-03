@@ -149,7 +149,7 @@ function buildSiweMessage(address, nonce) {
     `${DOMAIN} wants you to sign in with your Ethereum account:\n` +
     `${address}\n\n` +
     `Welcome to Loyalty. Signing is the only way we can truly know that you are the owner of the wallet you are connecting. Signing is a safe, gas-less transaction that does not in any way give Loyalty permission to perform any transactions with your wallet.\n\n` +
-    `URI: ${ORIGIN}/dashboard\n` +
+    `URI: ${ORIGIN}/profile\n` +
     `Version: 1\n` +
     `Chain ID: ${CHAIN_ID}\n` +
     `Nonce: ${nonce}\n` +
