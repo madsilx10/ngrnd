@@ -36,6 +36,7 @@ async function connectX(authToken, ct0, jwt, address, index) {
   const { verifier, challenge } = genPkce();
   const state = genXState();
   const cookieHeader = `auth_token=${authToken}; ct0=${ct0}`;
+  console.log(`[${index}] [${address}] cookie check - auth_token: ${authToken?.slice(0,10)}... ct0: ${ct0?.slice(0,10)}...`);
 
   const authorizeReferer =
     `https://x.com/i/oauth2/authorize?client_id=${X_CLIENT_ID}` +
