@@ -1,5 +1,4 @@
 const { ethers } = require("ethers");
-const cycleTLS = require("cycletls");
 const fs = require("fs");
 const readline = require("readline");
 const crypto = require("crypto");
@@ -32,11 +31,11 @@ function genXState() {
 }
 
 
-async function connectX(authToken, ct0, guestId, jwt, address, index) {
+async function connectX(authToken, ct0, guestId, twid, jwt, address, index) {
   console.log(`[${index}] [${address}] connecting X...`);
   const { verifier, challenge } = genPkce();
   const state = genXState();
-  const cookieHeader = `auth_token=${authToken}; ct0=${ct0}; guest_id=${guestId}`;
+  const cookieHeader = `auth_token=${authToken}; ct0=${ct0}; guest_id=${guestId}; twid=${twid}`;
 
   const authorizeReferer =
     `https://x.com/i/oauth2/authorize?client_id=${X_CLIENT_ID}` +
@@ -54,81 +53,69 @@ async function connectX(authToken, ct0, guestId, jwt, address, index) {
     code_challenge_method: "S256",
   });
 
-  const tls = await cycleTLS();
-  const commonTlsOpts = {
-    ja3: "771,4865-4866-4867-49195-49199-49196-49200-52393-52392-49171-49172-156-157-47-53,0-23-65281-10-11-35-16-5-13-18-51-45-43-27-17513,29-23-24,0",
-    userAgent: HEADERS_COMMON["user-agent"],
-  };
-
   try {
     // step 1: GET authorize
-    const res = await tls.get(
-      `https://x.com/i/api/2/oauth2/authorize?${authorizeParams.toString()}`,
-      {
-        ...commonTlsOpts,
-        headers: {
-          authorization: `Bearer ${X_BEARER}`,
-          cookie: cookieHeader,
-          "x-csrf-token": ct0,
-          "x-twitter-active-user": "yes",
-          "x-twitter-auth-type": "OAuth2Session",
-          "x-twitter-client-language": "en",
-          "x-client-transaction-id": base64url(crypto.randomBytes(48)),
-          "accept": "*/*",
-          "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-          "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
-          "sec-ch-ua-mobile": "?1",
-          "sec-ch-ua-platform": '"Android"',
-          "sec-fetch-dest": "empty",
-          "sec-fetch-mode": "cors",
-          "sec-fetch-site": "same-origin",
-          referer: authorizeReferer,
-        },
-      }
-    );
+    const res = await fetch(`https://x.com/i/api/2/oauth2/authorize?${authorizeParams.toString()}`, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${X_BEARER}`,
+        cookie: cookieHeader,
+        "x-csrf-token": ct0,
+        "x-twitter-active-user": "yes",
+        "x-twitter-auth-type": "OAuth2Session",
+        "x-twitter-client-language": "en",
+        "x-client-transaction-id": base64url(crypto.randomBytes(48)),
+        "accept": "*/*",
+        "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        referer: authorizeReferer,
+        "user-agent": HEADERS_COMMON["user-agent"],
+      },
+    });
 
-    const data = typeof res.body === "string" ? JSON.parse(res.body) : res.body;
+    const data = await res.json();
     const authCode = data.auth_code;
     if (!authCode) {
       console.log(`[${index}] [${address}] X step1 FAILED:`, JSON.stringify(data).slice(0, 300));
-      tls.exit();
       return false;
     }
     console.log(`[${index}] [${address}] X step1 OK, auth_code acquired`);
 
     // step 2: POST approval
-    const approvalRes = await tls.post(
-      "https://x.com/i/api/2/oauth2/authorize",
-      new URLSearchParams({ approval: "true", code: authCode }).toString(),
-      {
-        ...commonTlsOpts,
-        headers: {
-          authorization: `Bearer ${X_BEARER}`,
-          "content-type": "application/x-www-form-urlencoded",
-          cookie: cookieHeader,
-          "x-csrf-token": ct0,
-          "x-twitter-active-user": "yes",
-          "x-twitter-auth-type": "OAuth2Session",
-          "x-twitter-client-language": "en",
-          "x-client-transaction-id": base64url(crypto.randomBytes(48)),
-          "accept": "*/*",
-          "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-          "origin": "https://x.com",
-          "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
-          "sec-ch-ua-mobile": "?1",
-          "sec-ch-ua-platform": '"Android"',
-          "sec-fetch-dest": "empty",
-          "sec-fetch-mode": "cors",
-          "sec-fetch-site": "same-origin",
-          referer: authorizeReferer,
-        },
-      }
-    );
+    const approvalRes = await fetch("https://x.com/i/api/2/oauth2/authorize", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${X_BEARER}`,
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: cookieHeader,
+        "x-csrf-token": ct0,
+        "x-twitter-active-user": "yes",
+        "x-twitter-auth-type": "OAuth2Session",
+        "x-twitter-client-language": "en",
+        "x-client-transaction-id": base64url(crypto.randomBytes(48)),
+        "accept": "*/*",
+        "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "origin": "https://x.com",
+        "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        referer: authorizeReferer,
+        "user-agent": HEADERS_COMMON["user-agent"],
+      },
+      body: new URLSearchParams({ approval: "true", code: authCode }).toString(),
+    });
 
-    const approvalData = typeof approvalRes.body === "string" ? JSON.parse(approvalRes.body) : approvalRes.body;
+    const approvalData = await approvalRes.json();
     if (!approvalData.redirect_uri) {
       console.log(`[${index}] [${address}] X step2 FAILED:`, JSON.stringify(approvalData).slice(0, 300));
-      tls.exit();
       return false;
     }
     console.log(`[${index}] [${address}] X step2 OK, redirect_uri acquired`);
@@ -151,7 +138,6 @@ async function connectX(authToken, ct0, guestId, jwt, address, index) {
 
     const ok = exchangeRes.status < 400 || exchangeRes.status === 302;
     console.log(`[${index}] [${address}] X connect -> ${ok ? "OK" : "FAILED"} (${exchangeRes.status})`);
-    tls.exit();
     return ok;
   } catch (err) {
     console.log(`[${index}] [${address}] X connect ERROR:`, err.message);
@@ -198,7 +184,7 @@ async function sleep(ms) {
   return new Promise((res) => setTimeout(res, ms));
 }
 
-async function processAccount(privateKey, index, xAuthToken, xCt0, xGuestId) {
+async function processAccount(privateKey, index, xAuthToken, xCt0, xGuestId, xTwid) {
   const wallet = new ethers.Wallet(privateKey);
   const address = wallet.address;
   console.log(`\n[${index}] [${address}] starting...`);
@@ -276,7 +262,7 @@ async function processAccount(privateKey, index, xAuthToken, xCt0, xGuestId) {
       // 5. connect X (kalau cookie tersedia)
       let xConnected = false;
       if (xAuthToken && xCt0) {
-        xConnected = await connectX(xAuthToken, xCt0, xGuestId, verifyData.jwt, address, index);
+        xConnected = await connectX(xAuthToken, xCt0, xGuestId, xTwid, verifyData.jwt, address, index);
       } else {
         console.log(`[${index}] [${address}] skip X connect (no cookie)`);
       }
@@ -346,8 +332,8 @@ async function loadXCookies() {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   const cookies = [];
-  for (let i = 0; i < lines.length; i += 3) {
-    cookies.push({ authToken: lines[i], ct0: lines[i + 1], guestId: lines[i + 2] });
+  for (let i = 0; i < lines.length; i += 4) {
+    cookies.push({ authToken: lines[i], ct0: lines[i + 1], guestId: lines[i + 2], twid: lines[i + 3] });
   }
   return cookies;
 }
@@ -388,7 +374,7 @@ async function main() {
   const results = [];
   for (const { key, idx } of selected) {
     const xCookie = xCookies[idx - 1] || null;
-    const res = await processAccount(key, idx, xCookie?.authToken, xCookie?.ct0, xCookie?.guestId);
+    const res = await processAccount(key, idx, xCookie?.authToken, xCookie?.ct0, xCookie?.guestId, xCookie?.twid);
     results.push(res);
     await sleep(2000 + Math.random() * 2000);
   }
