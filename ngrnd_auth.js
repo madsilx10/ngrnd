@@ -43,40 +43,87 @@ async function connectX(authToken, ct0, jwt, address, index) {
     `&scope=${encodeURIComponent(X_SCOPE)}&state=${state}` +
     `&code_challenge=${challenge}&code_challenge_method=S256`;
 
+  const authorizeParams = new URLSearchParams({
+    client_id: X_CLIENT_ID,
+    redirect_uri: X_REDIRECT_URI,
+    response_type: "code",
+    scope: X_SCOPE,
+    state,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+  });
+
   try {
-    const res = await fetch("https://x.com/i/api/2/oauth2/authorize", {
+    const res = await fetch(`https://x.com/i/api/2/oauth2/authorize?${authorizeParams.toString()}`, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${X_BEARER}`,
+        cookie: cookieHeader,
+        "x-csrf-token": ct0,
+        "X-Csrf-Token": ct0,
+        "x-twitter-active-user": "yes",
+        "x-twitter-auth-type": "OAuth2Session",
+        "x-twitter-client-language": "en",
+        "x-client-transaction-id": base64url(crypto.randomBytes(48)),
+        "accept": "*/*",
+        "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
+        "accept-encoding": "gzip, deflate, br",
+        "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
+        referer: authorizeReferer,
+        "user-agent": HEADERS_COMMON["user-agent"],
+      },
+    });
+
+    const data = await res.json();
+    const authCode = data.auth_code;
+    if (!authCode) {
+      console.log(`[${index}] [${address}] X step1 FAILED:`, JSON.stringify(data).slice(0, 300));
+      return false;
+    }
+    console.log(`[${index}] [${address}] X step1 OK, auth_code acquired`);
+
+    // step 2: POST approval
+    const approvalRes = await fetch("https://x.com/i/api/2/oauth2/authorize", {
       method: "POST",
       headers: {
         authorization: `Bearer ${X_BEARER}`,
         "content-type": "application/x-www-form-urlencoded",
         cookie: cookieHeader,
         "x-csrf-token": ct0,
+        "X-Csrf-Token": ct0,
         "x-twitter-active-user": "yes",
         "x-twitter-auth-type": "OAuth2Session",
         "x-twitter-client-language": "en",
+        "x-client-transaction-id": base64url(crypto.randomBytes(48)),
+        "accept": "*/*",
+        "accept-language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
         "origin": "https://x.com",
+        "sec-ch-ua": '"Not)A;Brand";v="24", "Chromium";v="116"',
+        "sec-ch-ua-mobile": "?1",
+        "sec-ch-ua-platform": '"Android"',
+        "sec-fetch-dest": "empty",
+        "sec-fetch-mode": "cors",
+        "sec-fetch-site": "same-origin",
         referer: authorizeReferer,
         "user-agent": HEADERS_COMMON["user-agent"],
       },
-      body: new URLSearchParams({
-        approval: "true",
-        client_id: X_CLIENT_ID,
-        redirect_uri: X_REDIRECT_URI,
-        response_type: "code",
-        scope: X_SCOPE,
-        state,
-        code_challenge: challenge,
-        code_challenge_method: "S256",
-      }).toString(),
+      body: new URLSearchParams({ approval: "true", code: authCode }).toString(),
     });
 
-    const data = await res.json();
-    if (!data.redirect_uri) {
-      console.log(`[${index}] [${address}] X connect FAILED:`, JSON.stringify(data).slice(0, 300));
+    const approvalData = await approvalRes.json();
+    if (!approvalData.redirect_uri) {
+      console.log(`[${index}] [${address}] X step2 FAILED:`, JSON.stringify(approvalData).slice(0, 300));
       return false;
     }
+    console.log(`[${index}] [${address}] X step2 OK, redirect_uri acquired`);
 
-    const redirectUrl = new URL(data.redirect_uri);
+    // step 3: Dynamic callback
+    const redirectUrl = new URL(approvalData.redirect_uri);
     const code = redirectUrl.searchParams.get("code");
     const returnedState = redirectUrl.searchParams.get("state");
 
