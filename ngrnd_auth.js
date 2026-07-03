@@ -236,8 +236,8 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
     if (verifyRes.status === 200 && verifyData.jwt) {
       console.log(`[${index}] [${address}] SUCCESS, jwt acquired`);
 
-      // 5. apply referral (pakai jwt penuh, bukan minified — kasih jeda dulu)
-      await sleep(2000);
+      // 5. apply referral (pakai jwt penuh — kasih jeda panjang, browser butuh ~7-8 detik sebelum referral sukses)
+      await sleep(9000);
       const referralOk = await applyReferral(verifyData.jwt, address, index);
 
       // 6. connect X (kalau cookie tersedia)
