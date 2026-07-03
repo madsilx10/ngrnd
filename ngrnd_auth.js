@@ -42,8 +42,13 @@ async function applyReferral(jwt, address, index) {
       },
     });
     const data = await res.json();
-    console.log(`[${index}] [${address}] referral -> ${data.referredBy === REF_CODE ? "OK" : "FAILED"}`);
-    return data.referredBy === REF_CODE;
+    const ok = data.referredBy === REF_CODE;
+    if (!ok) {
+      console.log(`[${index}] [${address}] referral FAILED:`, JSON.stringify(data).slice(0, 200));
+    } else {
+      console.log(`[${index}] [${address}] referral -> OK`);
+    }
+    return ok;
   } catch (err) {
     console.log(`[${index}] [${address}] referral ERROR:`, err.message);
     return false;
@@ -241,7 +246,7 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
         console.log(`[${index}] [${address}] skip X connect (no cookie)`);
       }
 
-      return { address, jwt: verifyData.jwt, minifiedJwt: verifyData.minifiedJwt, xConnected };
+      return { address, jwt: verifyData.jwt, minifiedJwt: verifyData.minifiedJwt, xConnected, referral: true };
     } else {
       console.log(`[${index}] [${address}] FAILED:`, JSON.stringify(verifyData).slice(0, 300));
       return null;
