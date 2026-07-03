@@ -31,11 +31,11 @@ function genXState() {
 }
 
 
-async function connectX(authToken, ct0, jwt, address, index) {
+async function connectX(authToken, ct0, guestId, gt, jwt, address, index) {
   console.log(`[${index}] [${address}] connecting X...`);
   const { verifier, challenge } = genPkce();
   const state = genXState();
-  const cookieHeader = `auth_token=${authToken}; ct0=${ct0}`;
+  const cookieHeader = `auth_token=${authToken}; ct0=${ct0}; guest_id=${guestId}; gt=${gt}`;
   console.log(`[${index}] [${address}] cookie check - auth_token: ${authToken?.slice(0,10)}... ct0: ${ct0?.slice(0,10)}...`);
 
   const authorizeReferer =
@@ -265,7 +265,7 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
       // 5. connect X (kalau cookie tersedia)
       let xConnected = false;
       if (xAuthToken && xCt0) {
-        xConnected = await connectX(xAuthToken, xCt0, verifyData.jwt, address, index);
+        xConnected = await connectX(xAuthToken, xCt0, xCookie?.guestId, xCookie?.gt, verifyData.jwt, address, index);
       } else {
         console.log(`[${index}] [${address}] skip X connect (no cookie)`);
       }
@@ -335,8 +335,8 @@ async function loadXCookies() {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
   const cookies = [];
-  for (let i = 0; i < lines.length; i += 2) {
-    cookies.push({ authToken: lines[i], ct0: lines[i + 1] });
+  for (let i = 0; i < lines.length; i += 4) {
+    cookies.push({ authToken: lines[i], ct0: lines[i + 1], guestId: lines[i + 2], gt: lines[i + 3] });
   }
   return cookies;
 }
