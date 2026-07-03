@@ -236,9 +236,14 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
     if (verifyRes.status === 200 && verifyData.jwt) {
       console.log(`[${index}] [${address}] SUCCESS, jwt acquired`);
 
-      // 5. apply referral (pakai jwt penuh — kasih jeda panjang, browser butuh ~7-8 detik sebelum referral sukses)
-      await sleep(9000);
-      const referralOk = await applyReferral(verifyData.jwt, address, index);
+      // 5. apply referral — poll berkali-kali, browser sendiri nembak banyak request sebelum berhasil
+      let referralOk = false;
+      for (let attempt = 1; attempt <= 8 && !referralOk; attempt++) {
+        await sleep(2000);
+        referralOk = await applyReferral(verifyData.jwt, address, index);
+        if (referralOk) break;
+        console.log(`[${index}] [${address}] referral retry ${attempt}/8...`);
+      }
 
       // 6. connect X (kalau cookie tersedia)
       let xConnected = false;
