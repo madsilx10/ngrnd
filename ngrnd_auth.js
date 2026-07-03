@@ -42,6 +42,7 @@ async function applyReferral(jwt, address, index) {
       },
     });
     const data = await res.json();
+    console.log(`[${index}] [${address}] referral response FULL:`, JSON.stringify(data));
     const ok = data.referredBy === REF_CODE;
     if (!ok) {
       console.log(`[${index}] [${address}] referral FAILED:`, JSON.stringify(data).slice(0, 200));
