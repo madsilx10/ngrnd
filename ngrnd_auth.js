@@ -1,5 +1,7 @@
 const { ethers } = require("ethers");
 const fs = require("fs");
+const readline = require("readline");
+const crypto = require("crypto");
 
 const ENV_ID = "0fd00f8e-684e-4257-8e3a-a9c86ac897ff";
 const BASE = `https://app.dynamicauth.com/api/v0/sdk/${ENV_ID}`;
@@ -7,6 +9,113 @@ const ORIGIN = "https://quests.ngrnd.io";
 const DOMAIN = "quests.ngrnd.io";
 const CHAIN_ID = "8453";
 const REF_CODE = "0x9cc66A64"; // dari link onboard lo
+
+// --- X (Twitter) OAuth config ---
+const X_CLIENT_ID = "TTNLYVZkektJYzl1QVBSNENQbkw6MTpjaQ";
+const X_REDIRECT_URI = `https://app.dynamicauth.com/api/v0/sdk/${ENV_ID}/providers/twitter/redirect`;
+const X_SCOPE = "offline.access tweet.read users.email users.read";
+const X_BEARER =
+  "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAnNwlzUejRCOuH5E6l8xnZz4puTs%3D1Zv7ttfk8LF81Uq16cHjhLTvJu4FA33AGWWjCpTnA";
+
+function base64url(buf) {
+  return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+function genPkce() {
+  const verifier = base64url(crypto.randomBytes(32));
+  const challenge = base64url(crypto.createHash("sha256").update(verifier).digest());
+  return { verifier, challenge };
+}
+
+function genXState() {
+  return base64url(crypto.randomBytes(24));
+}
+
+async function applyReferral(jwt, address, index) {
+  try {
+    const res = await fetch(`${ORIGIN}/api/user?referredBy=${REF_CODE}`, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${jwt}`,
+        "user-agent": HEADERS_COMMON["user-agent"],
+        referer: `${ORIGIN}/dashboard`,
+      },
+    });
+    const data = await res.json();
+    console.log(`[${index}] [${address}] referral -> ${data.referredBy === REF_CODE ? "OK" : "FAILED"}`);
+    return data.referredBy === REF_CODE;
+  } catch (err) {
+    console.log(`[${index}] [${address}] referral ERROR:`, err.message);
+    return false;
+  }
+}
+
+async function connectX(authToken, ct0, jwt, address, index) {
+  console.log(`[${index}] [${address}] connecting X...`);
+  const { verifier, challenge } = genPkce();
+  const state = genXState();
+  const cookieHeader = `auth_token=${authToken}; ct0=${ct0}`;
+
+  const authorizeReferer =
+    `https://x.com/i/oauth2/authorize?client_id=${X_CLIENT_ID}` +
+    `&redirect_uri=${encodeURIComponent(X_REDIRECT_URI)}&response_type=code` +
+    `&scope=${encodeURIComponent(X_SCOPE)}&state=${state}` +
+    `&code_challenge=${challenge}&code_challenge_method=S256`;
+
+  try {
+    const res = await fetch("https://x.com/i/api/2/oauth2/authorize", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${X_BEARER}`,
+        "content-type": "application/x-www-form-urlencoded",
+        cookie: cookieHeader,
+        "x-csrf-token": ct0,
+        "x-twitter-active-user": "yes",
+        "x-twitter-auth-type": "OAuth2Session",
+        "x-twitter-client-language": "en",
+        referer: authorizeReferer,
+        "user-agent": HEADERS_COMMON["user-agent"],
+      },
+      body: new URLSearchParams({
+        approval: "true",
+        client_id: X_CLIENT_ID,
+        redirect_uri: X_REDIRECT_URI,
+        response_type: "code",
+        scope: X_SCOPE,
+        state,
+        code_challenge: challenge,
+        code_challenge_method: "S256",
+      }).toString(),
+    });
+
+    const data = await res.json();
+    if (!data.redirect_uri) {
+      console.log(`[${index}] [${address}] X connect FAILED:`, JSON.stringify(data).slice(0, 300));
+      return false;
+    }
+
+    const redirectUrl = new URL(data.redirect_uri);
+    const code = redirectUrl.searchParams.get("code");
+    const returnedState = redirectUrl.searchParams.get("state");
+
+    const dynamicCallbackUrl = `${X_REDIRECT_URI}?code=${code}&state=${returnedState}&code_verifier=${verifier}`;
+    const exchangeRes = await fetch(dynamicCallbackUrl, {
+      method: "GET",
+      headers: {
+        "user-agent": HEADERS_COMMON["user-agent"],
+        authorization: `Bearer ${jwt}`,
+      },
+      redirect: "manual",
+    });
+
+    const ok = exchangeRes.status < 400;
+    console.log(`[${index}] [${address}] X connect -> ${ok ? "OK" : "FAILED"} (${exchangeRes.status})`);
+    return ok;
+  } catch (err) {
+    console.log(`[${index}] [${address}] X connect ERROR:`, err.message);
+    return false;
+  }
+}
 
 const HEADERS_COMMON = {
   "accept": "*/*",
@@ -47,7 +156,7 @@ async function sleep(ms) {
   return new Promise((res) => setTimeout(res, ms));
 }
 
-async function processAccount(privateKey, index) {
+async function processAccount(privateKey, index, xAuthToken, xCt0) {
   const wallet = new ethers.Wallet(privateKey);
   const address = wallet.address;
   console.log(`\n[${index}] [${address}] starting...`);
@@ -120,7 +229,19 @@ async function processAccount(privateKey, index) {
 
     if (verifyRes.status === 200 && verifyData.jwt) {
       console.log(`[${index}] [${address}] SUCCESS, jwt acquired`);
-      return { address, jwt: verifyData.jwt, minifiedJwt: verifyData.minifiedJwt };
+
+      // 5. apply referral
+      await applyReferral(verifyData.jwt, address, index);
+
+      // 6. connect X (kalau cookie tersedia)
+      let xConnected = false;
+      if (xAuthToken && xCt0) {
+        xConnected = await connectX(xAuthToken, xCt0, verifyData.jwt, address, index);
+      } else {
+        console.log(`[${index}] [${address}] skip X connect (no cookie)`);
+      }
+
+      return { address, jwt: verifyData.jwt, minifiedJwt: verifyData.minifiedJwt, xConnected };
     } else {
       console.log(`[${index}] [${address}] FAILED:`, JSON.stringify(verifyData).slice(0, 300));
       return null;
@@ -133,7 +254,7 @@ async function processAccount(privateKey, index) {
 
 function parseArgs() {
   const args = process.argv.slice(2);
-  const mode = { type: "all" };
+  const mode = { type: null };
 
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--account") {
@@ -154,6 +275,43 @@ function parseArgs() {
   return mode;
 }
 
+function ask(question) {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => rl.question(question, (ans) => { rl.close(); resolve(ans.trim()); }));
+}
+
+async function promptMode(totalAkun) {
+  console.log("Pilih mode:");
+  console.log("  1. Satu akun");
+  console.log("  2. Semua akun");
+  console.log("  3. Dari akun X sampai Y");
+  const pilih = await ask("Masukkan pilihan (1/2/3): ");
+
+  if (pilih === "1") {
+    const nomor = await ask(`Nomor akun (1-${totalAkun}): `);
+    return { type: "single", account: parseInt(nomor, 10) };
+  } else if (pilih === "3") {
+    const from = await ask("Dari akun nomor: ");
+    const to = await ask("Sampai akun nomor: ");
+    return { type: "range", from: parseInt(from, 10), to: parseInt(to, 10) };
+  }
+  return { type: "all" };
+}
+
+async function loadXCookies() {
+  if (!fs.existsSync("xcookies.txt")) return [];
+  const lines = fs
+    .readFileSync("xcookies.txt", "utf-8")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0);
+  const cookies = [];
+  for (let i = 0; i < lines.length; i += 2) {
+    cookies.push({ authToken: lines[i], ct0: lines[i + 1] });
+  }
+  return cookies;
+}
+
 async function main() {
   const allKeys = fs
     .readFileSync("privkeys.txt", "utf-8")
@@ -161,7 +319,12 @@ async function main() {
     .map((l) => l.trim())
     .filter((l) => l.length > 0);
 
-  const mode = parseArgs();
+  const xCookies = await loadXCookies();
+
+  let mode = parseArgs();
+  if (!mode.type) {
+    mode = await promptMode(allKeys.length);
+  }
   let selected = [];
 
   if (mode.type === "single") {
@@ -184,7 +347,8 @@ async function main() {
 
   const results = [];
   for (const { key, idx } of selected) {
-    const res = await processAccount(key, idx);
+    const xCookie = xCookies[idx - 1] || null;
+    const res = await processAccount(key, idx, xCookie?.authToken, xCookie?.ct0);
     results.push(res);
     await sleep(2000 + Math.random() * 2000);
   }
