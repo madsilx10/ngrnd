@@ -187,7 +187,7 @@ async function sleep(ms) {
   return new Promise((res) => setTimeout(res, ms));
 }
 
-async function processAccount(privateKey, index, xAuthToken, xCt0) {
+async function processAccount(privateKey, index, xAuthToken, xCt0, xGuestId) {
   const wallet = new ethers.Wallet(privateKey);
   const address = wallet.address;
   console.log(`\n[${index}] [${address}] starting...`);
@@ -265,7 +265,7 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
       // 5. connect X (kalau cookie tersedia)
       let xConnected = false;
       if (xAuthToken && xCt0) {
-        xConnected = await connectX(xAuthToken, xCt0, xCookie?.guestId, verifyData.jwt, address, index);
+        xConnected = await connectX(xAuthToken, xCt0, xGuestId, verifyData.jwt, address, index);
       } else {
         console.log(`[${index}] [${address}] skip X connect (no cookie)`);
       }
@@ -377,7 +377,7 @@ async function main() {
   const results = [];
   for (const { key, idx } of selected) {
     const xCookie = xCookies[idx - 1] || null;
-    const res = await processAccount(key, idx, xCookie?.authToken, xCookie?.ct0);
+    const res = await processAccount(key, idx, xCookie?.authToken, xCookie?.ct0, xCookie?.guestId);
     results.push(res);
     await sleep(2000 + Math.random() * 2000);
   }
