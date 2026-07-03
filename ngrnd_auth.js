@@ -235,8 +235,8 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
     if (verifyRes.status === 200 && verifyData.jwt) {
       console.log(`[${index}] [${address}] SUCCESS, jwt acquired`);
 
-      // 5. apply referral
-      await applyReferral(verifyData.jwt, address, index);
+      // 5. apply referral (pake minifiedJwt)
+      await applyReferral(verifyData.minifiedJwt, address, index);
 
       // 6. connect X (kalau cookie tersedia)
       let xConnected = false;
