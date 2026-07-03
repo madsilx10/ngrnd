@@ -235,8 +235,14 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
     if (verifyRes.status === 200 && verifyData.jwt) {
       console.log(`[${index}] [${address}] SUCCESS, jwt acquired`);
 
-      // 5. apply referral (pake minifiedJwt)
-      await applyReferral(verifyData.minifiedJwt, address, index);
+      // 5. apply referral (kasih jeda dulu biar wallet keattach di sisi server)
+      await sleep(1500);
+      let referralOk = await applyReferral(verifyData.minifiedJwt, address, index);
+      if (!referralOk) {
+        // retry sekali pake jwt biasa (bukan minified), siapa tau endpoint expect ini
+        await sleep(1500);
+        referralOk = await applyReferral(verifyData.jwt, address, index);
+      }
 
       // 6. connect X (kalau cookie tersedia)
       let xConnected = false;
@@ -246,7 +252,7 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
         console.log(`[${index}] [${address}] skip X connect (no cookie)`);
       }
 
-      return { address, jwt: verifyData.jwt, minifiedJwt: verifyData.minifiedJwt, xConnected, referral: true };
+      return { address, jwt: verifyData.jwt, minifiedJwt: verifyData.minifiedJwt, xConnected, referral: referralOk };
     } else {
       console.log(`[${index}] [${address}] FAILED:`, JSON.stringify(verifyData).slice(0, 300));
       return null;
