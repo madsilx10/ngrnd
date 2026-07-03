@@ -36,8 +36,8 @@ async function applyReferral(jwt, address, index) {
     const res = await fetch(`${ORIGIN}/api/user?referredBy=${REF_CODE}`, {
       method: "GET",
       headers: {
+        ...HEADERS_COMMON,
         authorization: `Bearer ${jwt}`,
-        "user-agent": HEADERS_COMMON["user-agent"],
         referer: `${ORIGIN}/dashboard`,
       },
     });
@@ -236,14 +236,9 @@ async function processAccount(privateKey, index, xAuthToken, xCt0) {
     if (verifyRes.status === 200 && verifyData.jwt) {
       console.log(`[${index}] [${address}] SUCCESS, jwt acquired`);
 
-      // 5. apply referral (kasih jeda dulu biar wallet keattach di sisi server)
-      await sleep(1500);
-      let referralOk = await applyReferral(verifyData.minifiedJwt, address, index);
-      if (!referralOk) {
-        // retry sekali pake jwt biasa (bukan minified), siapa tau endpoint expect ini
-        await sleep(1500);
-        referralOk = await applyReferral(verifyData.jwt, address, index);
-      }
+      // 5. apply referral (pakai jwt penuh, bukan minified — kasih jeda dulu)
+      await sleep(2000);
+      const referralOk = await applyReferral(verifyData.jwt, address, index);
 
       // 6. connect X (kalau cookie tersedia)
       let xConnected = false;
