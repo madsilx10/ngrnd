@@ -15,7 +15,7 @@ const X_CLIENT_ID = "TTNLYVZkektJYzl1QVBSNENQbkw6MTpjaQ";
 const X_REDIRECT_URI = `https://app.dynamicauth.com/api/v0/sdk/${ENV_ID}/providers/twitter/redirect`;
 const X_SCOPE = "offline.access tweet.read users.email users.read";
 const X_BEARER =
-  "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAnNwlzUejRCOuH5E6l8xnZz4puTs%3D1Zv7ttfk8LF81Uq16cHjhLTvJu4FA33AGWWjCpTnA";
+  "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAnNwIzUejRCOuH5E6l8xnZz4puTs%3D1Zv7ttfk8LF81lUq16cHjhLTvJu4FA33AGWWjCpTnA";
 
 function base64url(buf) {
   return buf.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
